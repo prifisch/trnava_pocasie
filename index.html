@@ -11,6 +11,7 @@
         .container { max-width: 900px; margin: 0 auto; }
         .card { background: var(--card); padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 20px; }
         h1 { text-align: center; color: #1e293b; }
+        h3 { margin-top: 0; color: #475569; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
         th { background: #f1f5f9; }
@@ -20,14 +21,17 @@
 <body>
     <div class="container">
         <h1>Počasie v Trnave</h1>
+        
         <div class="card">
             <h3>Vývoj teploty (posledných 24 hodín)</h3>
             <canvas id="tempChart"></canvas>
         </div>
+
         <div class="card">
             <h3>Mesačné priemery</h3>
             <div id="monthly-table">Načítavam...</div>
         </div>
+
         <div class="card">
             <h3>Denné priemery</h3>
             <div id="summary-table">Načítavam...</div>
@@ -44,24 +48,27 @@
                 const chartLabels = [];
                 const chartData = [];
 
+                // i = 1 preskakuje hlavičku CSV
                 for (let i = 1; i < rows.length; i++) {
                     const columns = rows[i].split(',');
-                    if (columns.length < 2) continue; // Preskoč nekompletné riadky
+                    if (columns.length < 2) continue;
 
-                    const dt = columns[0];
+                    // Normalizácia dátumu: nahradí 'T' medzerou, aby split vždy fungoval
+                    const cleanDt = columns[0].replace('T', ' ');
                     const temp = parseFloat(columns[1]);
+                    
+                    if (isNaN(temp)) continue;
 
-                    // Bezpečná analýza času
-                    const parts = dt.split(' ');
-                    const datePart = parts[0]; // YYYY-MM-DD
-                    const timePart = (parts.length > 1) ? parts[1].substring(0, 5) : "00:00"; // Zabezpečené substring
+                    const datePart = cleanDt.split(' ')[0]; // YYYY-MM-DD
+                    const timePart = cleanDt.includes(' ') ? cleanDt.split(' ')[1].substring(0, 5) : "00:00";
+                    const monthPart = datePart.substring(0, 7); // YYYY-MM
 
-                    // Denné/Mesačné štatistiky
+                    // Agregácia pre Denné priemery
                     if (!dailyStats[datePart]) dailyStats[datePart] = { sum: 0, count: 0 };
                     dailyStats[datePart].sum += temp;
                     dailyStats[datePart].count += 1;
 
-                    const monthPart = datePart.substring(0, 7);
+                    // Agregácia pre Mesačné priemery
                     if (!monthlyStats[monthPart]) monthlyStats[monthPart] = { sum: 0, count: 0 };
                     monthlyStats[monthPart].sum += temp;
                     monthlyStats[monthPart].count += 1;
@@ -73,29 +80,36 @@
                     }
                 }
 
-                // Vykreslenie...
+                // Vykreslenie mesačnej tabuľky
                 let mHtml = '<table><tr><th>Mesiac</th><th>Priemer (°C)</th></tr>';
                 Object.keys(monthlyStats).sort().reverse().forEach(m => {
-                    mHtml += `<tr><td>${m}</td><td>${(monthlyStats[m].sum / monthlyStats[m].count).toFixed(1)}</td></tr>`;
+                    const avg = (monthlyStats[m].sum / monthlyStats[m].count).toFixed(1);
+                    mHtml += `<tr><td>${m}</td><td>${avg}</td></tr>`;
                 });
                 document.getElementById('monthly-table').innerHTML = mHtml + '</table>';
 
+                // Vykreslenie dennej tabuľky
                 let dHtml = '<table><tr><th>Dátum</th><th>Priemer (°C)</th></tr>';
                 Object.keys(dailyStats).sort().reverse().forEach(d => {
-                    dHtml += `<tr><td>${d}</td><td>${(dailyStats[d].sum / dailyStats[d].count).toFixed(1)}</td></tr>`;
+                    const avg = (dailyStats[d].sum / dailyStats[d].count).toFixed(1);
+                    dHtml += `<tr><td>${d}</td><td>${avg}</td></tr>`;
                 });
                 document.getElementById('summary-table').innerHTML = dHtml + '</table>';
 
+                // Vykreslenie grafu
                 new Chart(document.getElementById('tempChart'), {
                     type: 'line',
                     data: {
                         labels: chartLabels,
-                        datasets: [{ label: 'Teplota (°C)', data: chartData, borderColor: '#2563eb', tension: 0.3 }]
+                        datasets: [{ label: 'Teplota (°C)', data: chartData, borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.1)', fill: true, tension: 0.3 }]
                     },
                     options: { responsive: true, maintainAspectRatio: false }
                 });
             })
-            .catch(err => console.error("Chyba v kóde:", err));
+            .catch(err => {
+                console.error("Chyba pri spracovaní:", err);
+                document.getElementById('summary-table').innerHTML = "Nepodarilo sa načítať dáta.";
+            });
     </script>
 </body>
 </html>
