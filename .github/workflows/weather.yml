@@ -1,7 +1,7 @@
 name: Zber pocasia
 on:
   schedule:
-    - cron: '0 8 * * *' # Spustí sa každý deň o 8:00
+    - cron: '0 * * * *' # Spustí sa každú hodinu
   workflow_dispatch: # Umožňuje spustiť skript ručne tlačidlom
 
 jobs:
