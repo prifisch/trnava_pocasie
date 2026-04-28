@@ -1,42 +1,56 @@
 import requests
 import pandas as pd
-from datetime import datetime, timedelta # Pridaný import pre dátumy
+from datetime import datetime
 import os
 
-# 1. Dynamický výpočet dátumu (včerajší deň)
-yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+# Konfigurácia
+LAT, LON = "48.3774", "17.5833"
+FILENAME = 'weather_daily.csv'
 
-# 2. Vloženie dátumu do URL pomocou f-stringu
-URL = f"https://archive-api.open-meteo.com/v1/era5?latitude=48.3774&longitude=17.5833&start_date={yesterday}&end_date={yesterday}&hourly=temperature_2m,precipitation"
+def get_temp_at_hour(hourly_data, hour):
+    # API vracia dáta ako zoznam hodín 00-23
+    try:
+        return hourly_data['temperature_2m'][hour]
+    except (IndexError, KeyError):
+        return None
 
-def fetch_data():
-    response = requests.get(URL).json()
-    # Tu berieme dáta, ktoré prišli z API
-    # POZOR: Toto vráti zoznam hodnôt pre celý deň, nie len jedno číslo!
-    # Ak chceš uložiť všetky hodiny, treba to trochu upraviť:
-    return response['hourly']
+def main():
+    today = datetime.now().strftime('%Y-%m-%d')
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={LAT}&longitude={LON}&hourly=temperature_2m&start_date={today}&end_date={today}"
+    
+    response = requests.get(url)
+    if response.status_code != 200:
+        print("Chyba pripojenia k API")
+        return
 
-# Získanie dát
-data = fetch_data()
-times = data['time']
-temps = data['temperature_2m']
-precip = data['precipitation']
+    data = response.json()
+    hourly = data.get('hourly', {})
 
-# Uloženie všetkých hodín do CSV
-new_data = []
-for i in range(len(times)):
-    new_data.append({
-        'Cas': times[i],
-        'Teplota_C': temps[i],
-        'Zrazky_mm': precip[i]
-    })
+    # Získanie hodnôt v požadovaných časoch
+    t7 = get_temp_at_hour(hourly, 7)
+    t14 = get_temp_at_hour(hourly, 14)
+    t21 = get_temp_at_hour(hourly, 21)
 
-# Čítanie a zápis
-df_new = pd.DataFrame(new_data)
-if os.path.exists('data.csv'):
-    df_old = pd.read_csv('data.csv')
-    df = pd.concat([df_old, df_new], ignore_index=True)
-else:
-    df = df_new
+    if None in [t7, t14, t21]:
+        print("Chýbajú dáta pre niektorý z požadovaných časov (7, 14 alebo 21)")
+        return
 
-df.to_csv('data.csv', index=False)
+    # Vzorec: (T7 + T14 + 2 * T21) / 4
+    avg_temp = (t7 + t14 + (2 * t21)) / 4
+
+    # Uloženie do CSV
+    new_entry = pd.DataFrame({'Datum': [today], 'T7': [t7], 'T14': [t14], 'T21': [t21], 'Priemer': [round(avg_temp, 2)]})
+    
+    if os.path.exists(FILENAME):
+        df = pd.read_csv(FILENAME)
+        # Ak už záznam pre dnešok existuje, prepíšeme ho
+        df = df[df['Datum'] != today]
+        df = pd.concat([df, new_entry]).sort_values('Datum')
+    else:
+        df = new_entry
+
+    df.to_csv(FILENAME, index=False)
+    print(f"Dáta pre {today} uložené: Priemer = {avg_temp}")
+
+if __name__ == "__main__":
+    main()
