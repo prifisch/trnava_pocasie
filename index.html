@@ -56,7 +56,16 @@
                 // 3. Vykreslenie Tabuľky detailov
                 let detailHtml = '<table><thead><tr><th>Dátum a čas</th><th>Teplota (°C)</th><th>Zrážky (mm)</th></tr></thead><tbody>';
                 allRows.reverse().forEach(row => {
-                    detailHtml += `<tr><td>${row.date}</td><td>${row.temp}</td><td>${row.rain}</td></tr>`;
+                    // Vytvoríme objekt dátum a povieme mu, že vstupný čas je UTC (pridaním 'Z')
+                    const dateObj = new Date(row.date.replace(' ', 'T') + 'Z');
+                    
+                    // Prevedieme na čitateľný lokálny formát
+                    const localDateTime = dateObj.toLocaleString('sk-SK', { 
+                        year: 'numeric', month: '2-digit', day: '2-digit', 
+                        hour: '2-digit', minute: '2-digit' 
+                    });
+                
+                    detailHtml += `<tr><td>${localDateTime}</td><td>${row.temp}</td><td>${row.rain}</td></tr>`;
                 });
                 detailHtml += '</tbody></table>';
                 document.getElementById('details-table').innerHTML = detailHtml;
