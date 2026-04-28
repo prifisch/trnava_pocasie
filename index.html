@@ -2,32 +2,50 @@
 <html lang="sk">
 <head>
     <meta charset="UTF-8">
-    <title>Počasie v Trnave</title>
+    <title>Počasie v Trnave - Denné priemery</title>
     <style>
         body { font-family: sans-serif; padding: 20px; }
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
+        table { border-collapse: collapse; width: 100%; max-width: 600px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background-color: #4CAF50; color: white; }
     </style>
 </head>
 <body>
-    <h1>Aktuálne namerané počasie v Trnave</h1>
-    <div id="table-container">Načítavam dáta...</div>
+    <h1>Priemerná denná teplota v Trnave</h1>
+    <div id="table-container">Načítavam a počítam priemery...</div>
 
     <script>
         fetch('data.csv')
             .then(response => response.text())
-            .then(data => {
-                const rows = data.split('\n').filter(row => row.trim() !== "");
-                let html = '<table>';
-                rows.forEach((row, index) => {
-                    const columns = row.split(',');
-                    html += index === 0 ? '<thead><tr>' : '<tr>';
-                    columns.forEach(col => {
-                        html += index === 0 ? `<th>${col}</th>` : `<td>${col}</td>`;
-                    });
-                    html += index === 0 ? '</tr></thead><tbody>' : '</tr>';
+            .then(csvData => {
+                const rows = csvData.split('\n').filter(row => row.trim() !== "");
+                const dailyStats = {};
+
+                // Preskočíme hlavičku (i=0) a spracujeme riadky
+                for (let i = 1; i < rows.length; i++) {
+                    const columns = rows[i].split(',');
+                    const dateTime = columns[0]; // formát YYYY-MM-DD HH:MM:SS
+                    const temp = parseFloat(columns[1]);
+                    const date = dateTime.split(' ')[0]; // Získame len YYYY-MM-DD
+
+                    if (!dailyStats[date]) {
+                        dailyStats[date] = { sum: 0, count: 0 };
+                    }
+                    dailyStats[date].sum += temp;
+                    dailyStats[date].count += 1;
+                }
+
+                // Vytvorenie HTML tabuľky
+                let html = '<table><thead><tr><th>Dátum</th><th>Priemerná teplota (°C)</th></tr></thead><tbody>';
+                
+                // Zoradíme dátumy od najnovšieho po najstarší
+                const sortedDates = Object.keys(dailyStats).sort().reverse();
+                
+                sortedDates.forEach(date => {
+                    const avg = (dailyStats[date].sum / dailyStats[date].count).toFixed(1);
+                    html += `<tr><td>${date}</td><td>${avg}</td></tr>`;
                 });
+                
                 html += '</tbody></table>';
                 document.getElementById('table-container').innerHTML = html;
             });
