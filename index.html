@@ -6,110 +6,98 @@
     <title>Počasie v Trnave</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        :root { --primary: #2563eb; --bg: #f8fafc; --card: #ffffff; }
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: var(--bg); margin: 0; padding: 20px; color: #334155; }
-        .container { max-width: 900px; margin: 0 auto; }
-        .card { background: var(--card); padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        h1 { text-align: center; color: #1e293b; }
-        h3 { margin-top: 0; color: #475569; margin-bottom: 15px; }
+        :root { --bg: #f4f7f6; --card: #ffffff; --text: #1e293b; --primary: #2563eb; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
         
-        /* Mriežka pre mesačné bloky */
-        .monthly-grid { 
-            display: grid; 
-            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); 
-            gap: 15px; 
-        }
-        .month-card { 
-            background: var(--card); 
-            padding: 15px; 
-            border-radius: 10px; 
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05); 
-            text-align: center; 
-            border-top: 4px solid var(--primary);
-        }
-        .month-name { font-weight: bold; color: #1e293b; display: block; margin-bottom: 5px; }
-        .month-temp { font-size: 1.25rem; color: var(--primary); font-weight: bold; }
+        /* Header */
+        header { margin-bottom: 30px; }
+        h1 { margin: 0; font-size: 24px; color: #475569; }
+        .location { font-size: 14px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
 
-        canvas { max-height: 300px; width: 100%; }
+        /* Grid layout */
+        .dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .card { background: var(--card); padding: 25px; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        .full-width { grid-column: span 2; }
+        
+        h3 { margin: 0 0 15px 0; font-size: 16px; color: #64748b; }
+        .temp-large { font-size: 48px; font-weight: bold; margin: 10px 0; }
+
+        canvas { width: 100% !important; height: 250px !important; }
+        
+        @media (max-width: 768px) { .dashboard { grid-template-columns: 1fr; } .full-width { grid-column: span 1; } }
     </style>
 </head>
 <body>
-    <div class="container">
+
+<div class="container">
+    <header>
+        <div class="location">Zeleneč / Trnava, SK</div>
         <h1>Počasie v Trnave</h1>
-        
+    </header>
+
+    <div class="dashboard">
         <div class="card">
-            <h3>Vývoj teploty (posledných 30 dní)</h3>
+            <h3>Dnešná priemerná teplota</h3>
+            <div id="current-temp" class="temp-large">Načítavam...</div>
+            <p id="current-date" style="color: #64748b;"></p>
+        </div>
+
+        <div class="card">
+            <h3>Vývoj priemernej teploty (posledných 30 dní)</h3>
             <canvas id="tempChart"></canvas>
         </div>
-
-        <div class="card">
-            <h3>Mesačné priemery</h3>
-            <div id="monthly-grid" class="monthly-grid">Načítavam dáta...</div>
-        </div>
     </div>
+</div>
 
-    <script>
-        const monthNames = ["Január", "Február", "Marec", "Apríl", "Máj", "Jún", 
-                            "Júl", "August", "September", "Október", "November", "December"];
+<script>
+    fetch('weather_daily.csv')
+        .then(response => response.text())
+        .then(csvData => {
+            const rows = csvData.split(/\r?\n/).filter(row => row.trim() !== "");
+            const chartLabels = [];
+            const chartData = [];
+            
+            // Spracovanie dát (od konca, aby sme mali najnovšie)
+            for (let i = rows.length - 1; i >= 1; i--) {
+                const columns = rows[i].split(',');
+                if (columns.length < 5) continue;
 
-        fetch('weather_daily.csv')
-            .then(response => response.text())
-            .then(csvData => {
-                const rows = csvData.split(/\r?\n/).filter(row => row.trim() !== "");
-                const monthlyStats = {};
-                const chartLabels = [];
-                const chartData = [];
+                // Oprava formátu dátumu (odstránenie T z 2026-04-27T23:00)
+                let dateRaw = columns[0].split('T')[0]; 
+                let avg = parseFloat(columns[4]);
+                
+                if (isNaN(avg)) continue;
 
-                // Spracovanie dát
-                for (let i = rows.length - 1; i >= 1; i--) {
-                    const [date, t7, t14, t21, avg] = rows[i].split(',');
-                    const tempAvg = parseFloat(avg);
-                    if (isNaN(tempAvg)) continue;
-
-                    const [y, m, d] = date.split('-');
-                    
-                    // Agregácia pre mesačné priemery
-                    const monthKey = `${y}-${m}`;
-                    if (!monthlyStats[monthKey]) monthlyStats[monthKey] = { sum: 0, count: 0 };
-                    monthlyStats[monthKey].sum += tempAvg;
-                    monthlyStats[monthKey].count += 1;
-
-                    // Dáta pre graf (posledných 30 dní)
-                    if (rows.length - i <= 30) {
-                        chartLabels.unshift(`${d}.${m}.`);
-                        chartData.unshift(tempAvg);
-                    }
+                // Pridanie do grafu (posledných 30 dní)
+                if (chartLabels.length < 30) {
+                    chartLabels.unshift(dateRaw.slice(5)); // DD.MM
+                    chartData.unshift(avg);
                 }
+            }
 
-                // Vykreslenie mesačných blokov
-                const grid = document.getElementById('monthly-grid');
-                grid.innerHTML = ''; // Vyčistenie obsahu
+            // Nastavenie dnešnej teploty
+            document.getElementById('current-temp').innerText = chartData[chartData.length - 1] + "°C";
+            document.getElementById('current-date').innerText = "Dátum: " + rows[rows.length - 1].split(',')[0].split('T')[0];
 
-                Object.keys(monthlyStats).sort().reverse().forEach(mKey => {
-                    const [y, mNum] = mKey.split('-');
-                    const name = monthNames[parseInt(mNum) - 1];
-                    const avg = (monthlyStats[mKey].sum / monthlyStats[mKey].count).toFixed(1);
-                    
-                    const card = document.createElement('div');
-                    card.className = 'month-card';
-                    card.innerHTML = `<span class="month-name">${name} ${y}</span><span class="month-temp">${avg} °C</span>`;
-                    grid.appendChild(card);
-                });
-
-                // Vykreslenie grafu
-                new Chart(document.getElementById('tempChart'), {
-                    type: 'line',
-                    data: {
-                        labels: chartLabels,
-                        datasets: [{ label: 'Priemerná teplota (°C)', data: chartData, borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.1)', fill: true, tension: 0.3 }]
-                    },
-                    options: { responsive: true, maintainAspectRatio: false }
-                });
-            })
-            .catch(err => {
-                console.error("Chyba:", err);
-                document.getElementById('monthly-grid').innerHTML = "Chyba pri načítaní dát.";
+            // Vykreslenie grafu
+            new Chart(document.getElementById('tempChart'), {
+                type: 'line',
+                data: {
+                    labels: chartLabels,
+                    datasets: [{
+                        label: 'Teplota',
+                        data: chartData,
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: { responsive: true, plugins: { legend: { display: false } } }
             });
-    </script>
+        });
+</script>
+
 </body>
 </html>
