@@ -23,7 +23,7 @@
         <h1>Počasie v Trnave</h1>
         
         <div class="card">
-            <h3>Vývoj teploty (posledných 24 hodín)</h3>
+            <h3>Vývoj priemernej teploty (posledných 30 dní)</h3>
             <canvas id="tempChart"></canvas>
         </div>
 
@@ -39,79 +39,70 @@
     </div>
 
     <script>
-        // Pomocné pole pre názvy mesiacov
         const monthNames = ["Január", "Február", "Marec", "Apríl", "Máj", "Jún", 
                             "Júl", "August", "September", "Október", "November", "December"];
 
-        fetch('data.csv')
+        fetch('weather_daily.csv')
             .then(response => response.text())
             .then(csvData => {
                 const rows = csvData.split(/\r?\n/).filter(row => row.trim() !== "");
-                const dailyStats = {};
                 const monthlyStats = {};
                 const chartLabels = [];
                 const chartData = [];
 
-                for (let i = 1; i < rows.length; i++) {
-                    const columns = rows[i].split(',');
-                    if (columns.length < 2) continue;
+                // Generovanie dennej tabuľky (v opačnom poradí)
+                let dHtml = '<table><tr><th>Dátum</th><th>Priemer (°C)</th></tr>';
+                
+                // Prechádzame od konca po druhý riadok (vynecháme hlavičku)
+                for (let i = rows.length - 1; i >= 1; i--) {
+                    const [date, t7, t14, t21, avg] = rows[i].split(',');
+                    const tempAvg = parseFloat(avg);
+                    if (isNaN(tempAvg)) continue;
 
-                    const cleanDt = columns[0].replace('T', ' ');
-                    const temp = parseFloat(columns[1]);
+                    // Formátovanie dátumu na DD.MM.RRRR
+                    const [y, m, d] = date.split('-');
+                    const formattedDate = `${d}.${m}.${y}`;
                     
-                    if (isNaN(temp)) continue;
+                    // Riadok do tabuľky
+                    dHtml += `<tr><td>${formattedDate}</td><td>${tempAvg.toFixed(1)}</td></tr>`;
 
-                    const datePart = cleanDt.split(' ')[0]; // YYYY-MM-DD
-                    const timePart = cleanDt.includes(' ') ? cleanDt.split(' ')[1].substring(0, 5) : "00:00";
-                    const monthPart = datePart.substring(0, 7); // YYYY-MM
+                    // Mesačné štatistiky (agregácia)
+                    const monthKey = `${y}-${m}`;
+                    if (!monthlyStats[monthKey]) monthlyStats[monthKey] = { sum: 0, count: 0 };
+                    monthlyStats[monthKey].sum += tempAvg;
+                    monthlyStats[monthKey].count += 1;
 
-                    if (!dailyStats[datePart]) dailyStats[datePart] = { sum: 0, count: 0 };
-                    dailyStats[datePart].sum += temp;
-                    dailyStats[datePart].count += 1;
-
-                    if (!monthlyStats[monthPart]) monthlyStats[monthPart] = { sum: 0, count: 0 };
-                    monthlyStats[monthPart].sum += temp;
-                    monthlyStats[monthPart].count += 1;
-
-                    if (i > rows.length - 25) {
-                        chartLabels.push(timePart);
-                        chartData.push(temp);
+                    // Dáta pre graf (posledných 30 dní)
+                    if (rows.length - i <= 30) {
+                        chartLabels.unshift(formattedDate);
+                        chartData.unshift(tempAvg);
                     }
                 }
+                document.getElementById('summary-table').innerHTML = dHtml + '</table>';
 
-                // Vykreslenie mesačnej tabuľky (Formát: Apríl 2026)
+                // Vykreslenie mesačnej tabuľky
                 let mHtml = '<table><tr><th>Mesiac</th><th>Priemer (°C)</th></tr>';
-                Object.keys(monthlyStats).sort().reverse().forEach(m => {
-                    const [y, mNum] = m.split('-');
+                Object.keys(monthlyStats).sort().reverse().forEach(mKey => {
+                    const [y, mNum] = mKey.split('-');
                     const name = monthNames[parseInt(mNum) - 1];
-                    const avg = (monthlyStats[m].sum / monthlyStats[m].count).toFixed(1);
+                    const avg = (monthlyStats[mKey].sum / monthlyStats[mKey].count).toFixed(1);
                     mHtml += `<tr><td>${name} ${y}</td><td>${avg}</td></tr>`;
                 });
                 document.getElementById('monthly-table').innerHTML = mHtml + '</table>';
 
-                // Vykreslenie dennej tabuľky (Formát: DD.MM.RRRR)
-                let dHtml = '<table><tr><th>Dátum</th><th>Priemer (°C)</th></tr>';
-                Object.keys(dailyStats).sort().reverse().forEach(d => {
-                    const [y, m, day] = d.split('-');
-                    const formattedDate = `${day}.${m}.${y}`;
-                    const avg = (dailyStats[d].sum / dailyStats[d].count).toFixed(1);
-                    dHtml += `<tr><td>${formattedDate}</td><td>${avg}</td></tr>`;
-                });
-                document.getElementById('summary-table').innerHTML = dHtml + '</table>';
-
-                // Graf
+                // Vykreslenie grafu
                 new Chart(document.getElementById('tempChart'), {
                     type: 'line',
                     data: {
                         labels: chartLabels,
-                        datasets: [{ label: 'Teplota (°C)', data: chartData, borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.1)', fill: true, tension: 0.3 }]
+                        datasets: [{ label: 'Priemerná teplota (°C)', data: chartData, borderColor: '#2563eb', tension: 0.3 }]
                     },
                     options: { responsive: true, maintainAspectRatio: false }
                 });
             })
             .catch(err => {
                 console.error("Chyba:", err);
-                document.getElementById('summary-table').innerHTML = "Chyba pri načítaní.";
+                document.getElementById('summary-table').innerHTML = "Chyba pri načítaní dát.";
             });
     </script>
 </body>
