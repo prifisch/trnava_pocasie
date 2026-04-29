@@ -6,7 +6,7 @@
     <title>Počasie v Trnave</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        :root { --bg: #f8fafc; --card: #ffffff; --text: #1e293b; --primary: #2563eb; --secondary: #94a3b8; }
+        :root { --bg: #f8fafc; --card: #ffffff; --text: #1e293b; --primary: #2563eb; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 20px; }
         .container { max-width: 1000px; margin: 0 auto; }
         
@@ -15,16 +15,23 @@
         .location { font-size: 13px; color: #64748b; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 5px; }
 
         /* Grid pre mesačné karty */
-        .months-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
+        .months-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; margin-bottom: 40px; }
         
-        /* Štýl pre každú mesačnú kartu */
-        .month-card { background: var(--card); padding: 25px; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        .month-card { background: var(--card); padding: 25px; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
+        .month-card:hover { transform: translateY(-5px); box-shadow: 0 8px 16px rgba(0,0,0,0.1); }
+        .month-card.active { border: 2px solid var(--primary); }
+        
         .card-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px; }
-        .month-title { font-size: 18px; font-weight: bold; margin: 0; }
+        .month-title { font-size: 18px; font-weight: bold; }
         .month-avg { font-size: 24px; color: var(--primary); font-weight: bold; }
-        .avg-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; display: block; text-align: right; }
 
-        /* Štýl pre graf */
+        /* Tabuľka */
+        .details-section { background: var(--card); padding: 25px; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th { text-align: left; color: #64748b; padding: 12px; border-bottom: 2px solid #f1f5f9; }
+        td { padding: 12px; border-bottom: 1px solid #f1f5f9; }
+        tr:hover { background-color: #f8fafc; }
+        
         canvas { width: 100% !important; height: 160px !important; }
     </style>
 </head>
@@ -36,8 +43,19 @@
         <h1>Mesačné prehľady počasia</h1>
     </header>
 
-    <div id="months-container" class="months-container">
-        Načítavam dáta...
+    <div id="months-container" class="months-container">Načítavam dáta...</div>
+
+    <div id="details-section" class="details-section" style="display: none;">
+        <h2 id="table-title">Detail mesiaca</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Dátum</th>
+                    <th>Priemerná teplota</th>
+                </tr>
+            </thead>
+            <tbody id="details-body"></tbody>
+        </table>
     </div>
 </div>
 
@@ -50,109 +68,68 @@
             const rows = csvData.split(/\r?\n/).filter(row => row.trim() !== "");
             const monthlyData = {};
 
-            // 1. Zoskupenie dát podľa mesiacov
+            // Spracovanie dát
             for (let i = 1; i < rows.length; i++) {
-                const columns = rows[i].split(',');
-                if (columns.length < 5) continue;
+                const cols = rows[i].split(',');
+                if (cols.length < 5) continue;
 
-                const dateRaw = columns[0].split('T')[0];
-                const [y, m, d] = dateRaw.split('-');
-                const avg = parseFloat(columns[4]);
-                
-                if (isNaN(avg)) continue;
-
+                const [y, m, d] = cols[0].split('T')[0].split('-');
+                const avg = parseFloat(cols[4]);
                 const key = `${y}-${m}`;
-                if (!monthlyData[key]) {
-                    monthlyData[key] = { labels: [], values: [], sum: 0, count: 0 };
-                }
 
-                // Pridáme deň ako popis osi X (skrátený formát)
-                monthlyData[key].labels.push(d); 
-                monthlyData[key].values.push(avg);
+                if (!monthlyData[key]) {
+                    monthlyData[key] = { days: [], sum: 0, count: 0 };
+                }
+                monthlyData[key].days.push({ date: `${d}.${m}.${y}`, temp: avg });
                 monthlyData[key].sum += avg;
                 monthlyData[key].count += 1;
             }
 
-            // 2. Vykreslenie kariet
             const container = document.getElementById('months-container');
-            container.innerHTML = ''; // Vyčistiť text "Načítavam..."
+            container.innerHTML = '';
 
-            // Prechádzame mesiace v obrátenom poradí (najnovšie hore)
+            // Vytvorenie kariet
             Object.keys(monthlyData).sort().reverse().forEach(key => {
                 const [y, mNum] = key.split('-');
                 const monthName = monthNames[parseInt(mNum) - 1];
-                const data = monthlyData[key];
-                
-                // Výpočet priemernej teploty za mesiac
-                const avg = (data.sum / data.count).toFixed(1);
+                const avg = (monthlyData[key].sum / monthlyData[key].count).toFixed(1);
 
-                // Vytvorenie HTML štruktúry karty
                 const card = document.createElement('div');
                 card.className = 'month-card';
                 card.innerHTML = `
                     <div class="card-header">
                         <div class="month-title">${monthName} ${y}</div>
-                        <div>
-                            <div class="month-avg">${avg}°C</div>
-                            <span class="avg-label">mesačný priemer</span>
-                        </div>
+                        <div class="month-avg">${avg}°C</div>
                     </div>
-                    <canvas id="chart-${key}"></canvas>
                 `;
-                container.appendChild(card);
-
-                // 3. Vykreslenie podrobného grafu pre túto konkrétnu kartu
-                const ctx = document.getElementById(`chart-${key}`).getContext('2d');
                 
-                // Vytvorenie gradientu (mäkká výplň pod čiarou)
-                const gradient = ctx.createLinearGradient(0, 0, 0, 160);
-                gradient.addColorStop(0, 'rgba(37, 99, 235, 0.2)');
-                gradient.addColorStop(1, 'rgba(37, 99, 235, 0)');
-
-                new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: data.labels,
-                        datasets: [{
-                            data: data.values,
-                            borderColor: '#2563eb', // Sýta modrá čiara
-                            backgroundColor: gradient, // Použitie gradientu
-                            fill: true,
-                            tension: 0.3, // Vyhladená krivka
-                            borderWidth: 2,
-                            pointRadius: 0 // Skrytie bodiek
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false }, // Skrytie legendy
-                            tooltip: { // Zobrazíme deň a teplotu pri hoveri
-                                callbacks: {
-                                    label: (context) => ` ${context.raw}°C`
-                                }
-                            }
-                        },
-                        scales: {
-                            x: {
-                                grid: { display: false }, // Skrytie vertikálnych čiar
-                                ticks: { color: '#94a3b8', font: { size: 10 } }
-                            },
-                            y: {
-                                grid: { color: '#f1f5f9' },
-                                border: { dash: [4, 4] }, // Bodkované horizontálne čiary
-                                ticks: { color: '#94a3b8', font: { size: 10 } }
-                            }
-                        }
-                    }
-                });
+                // Kliknutie na kartu
+                card.onclick = () => {
+                    // Odstránenie triedy active zo všetkých
+                    document.querySelectorAll('.month-card').forEach(c => c.classList.remove('active'));
+                    card.classList.add('active');
+                    
+                    // Zobrazenie tabuľky
+                    showDetails(monthName, y, monthlyData[key].days);
+                };
+                
+                container.appendChild(card);
             });
-        })
-        .catch(err => {
-            document.getElementById('months-container').innerText = "Chyba pri načítaní dát. Skontrolujte súbor weather_daily.csv.";
-            console.error("Chyba:", err);
         });
+
+    function showDetails(month, year, days) {
+        const section = document.getElementById('details-section');
+        const body = document.getElementById('details-body');
+        document.getElementById('table-title').innerText = `Denné priemery: ${month} ${year}`;
+        
+        body.innerHTML = '';
+        days.forEach(d => {
+            body.innerHTML += `<tr><td>${d.date}</td><td>${d.temp.toFixed(1)}°C</td></tr>`;
+        });
+        
+        section.style.display = 'block';
+        section.scrollIntoView({ behavior: 'smooth' });
+    }
 </script>
 
 </body>
